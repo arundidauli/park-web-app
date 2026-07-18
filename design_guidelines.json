@@ -1,0 +1,113 @@
+{
+  "project_name": "7 Ajoobe Park Ticket Booking",
+  "theme": "Modern Minimal with Theme Park Accents (Awwwards-level, Playful & Vibrant)",
+  "typography": {
+    "import_url": "https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700&family=Hind:wght@400;500;600;700&family=Khand:wght@400;500;600;700;900&family=Outfit:wght@400;500;700;900&display=swap",
+    "latin_display": "'Outfit', sans-serif",
+    "hindi_display": "'Khand', sans-serif",
+    "latin_body": "'DM Sans', sans-serif",
+    "hindi_body": "'Hind', sans-serif",
+    "hierarchy": {
+      "h1": "text-5xl sm:text-6xl md:text-7xl font-black tracking-tight leading-[1.1]",
+      "h2": "text-4xl sm:text-5xl font-bold tracking-tight leading-tight",
+      "h3": "text-2xl sm:text-3xl font-semibold",
+      "body": "text-base sm:text-lg leading-relaxed",
+      "labels": "text-sm font-semibold tracking-wide uppercase"
+    }
+  },
+  "colors": {
+    "brand_yellow": "#FACC15",
+    "brand_teal": "#0D9488",
+    "brand_indigo": "#1E1B4B",
+    "brand_orange": "#EA580C",
+    "background_light": "#FFFBF0",
+    "text_dark": "#0F172A",
+    "text_muted": "#475569",
+    "surface_white": "#FFFFFF",
+    "border_light": "#E2E8F0"
+  },
+  "layout": {
+    "spacing": "Generous paddings (p-8 to p-24). Allow content to breathe.",
+    "radius": "Use rounded-3xl or rounded-full for a playful theme park aesthetic.",
+    "grids": "Bento-style asymmetrical grids for gallery and features.",
+    "containers": "Max-width 7xl for main content area, with full-bleed sections for Hero and Marquee."
+  },
+  "motion": {
+    "libraries": ["framer-motion"],
+    "choreography": {
+      "hero_text": "Masked line-by-line reveal using Framer Motion (initial { y: '100%', opacity: 0 }, animate { y: 0, opacity: 1 }, transition { staggerChildren }).",
+      "hero_images": "Subtle floating animation (y: [-10, 10] infinite alternate) to create a parallax/magical effect.",
+      "scroll_reveals": "Fade up and scale in for sections as they enter viewport.",
+      "marquee": "Infinite horizontal translation for the editorial marquee."
+    }
+  },
+  "components": {
+    "Header": {
+      "style": "Sticky top-0, glassmorphism (bg-white/80 backdrop-blur-md), border-b border-gray-200/50, z-50.",
+      "content": "Bilingual Logo (7 अजूबे PARK), Navigation links, 'Book Tickets' primary CTA button."
+    },
+    "Hero": {
+      "style": "Full viewport height, background_light. Massive kinetic typography.",
+      "content": "Hindi headline: 'दुनिया के प्रसिद्ध अजूबे अब आपके शहर मुरादाबाद में!'. English subtitle. CTA button that scrolls to booking form. Clipped floating images of the 7 Wonders (circles, pills, arch shapes) surrounding the text."
+    },
+    "EditorialMarquee": {
+      "style": "bg-brand_indigo text-brand_yellow py-4 overflow-hidden whitespace-nowrap",
+      "content": "Continuous scrolling text: THE 7 WONDERS OF THE WORLD • 7 अजूबे पार्क • NOW IN MORADABAD •"
+    },
+    "Manifesto": {
+      "style": "Numbered chapters (01, 02), high-contrast editorial layout.",
+      "content": "Park story and M.D.A. initiative details."
+    },
+    "WondersGallery": {
+      "style": "Bento grid, spotlight hover effects.",
+      "content": "Showcase of the 7 wonders using provided real product photography."
+    },
+    "BookingSection": {
+      "style": "Split layout: Form on left, Sticky Live Summary on right. bg-white rounded-3xl shadow-xl p-8.",
+      "content": "Date Picker, Adult/Child counters. Dynamic Pricing: Mon-Fri ₹50/person, Sat-Sun ₹100/person. Kids under 3 always FREE. 'Proceed to Pay' triggers Success Modal."
+    },
+    "PricingTable": {
+      "style": "Clean, scannable cards side-by-side (Weekday vs Weekend).",
+      "content": "Highlight the weekend card slightly (scale up, border brand_teal)."
+    },
+    "SuccessModal": {
+      "style": "Centered overlay, backdrop-blur-sm, white card.",
+      "content": "Dummy QR code, Success message, Ticket summary."
+    },
+    "Footer": {
+      "style": "bg-brand_indigo text-white py-12 rounded-t-[3rem]",
+      "content": "Contact Info: +91 98765 43210 | info@7ajoobeparkmoradabad.com. Address: RMMV+MF3, New Moradabad, Chaudharpur, Moradabad, Uttar Pradesh 244102. Google Maps placeholder (gray block with map icon)."
+    }
+  },
+  "image_urls": {
+    "taj_mahal": "https://images.pexels.com/photos/11521892/pexels-photo-11521892.jpeg",
+    "eiffel_tower": "https://images.pexels.com/photos/37405426/pexels-photo-37405426.jpeg",
+    "statue_of_liberty": "https://images.unsplash.com/photo-1588384153148-ebd739ac430c",
+    "colosseum": "https://images.pexels.com/photos/13092365/pexels-photo-13092365.jpeg",
+    "christ_the_redeemer": "https://images.unsplash.com/photo-1683331404237-64c763c70f5b",
+    "leaning_tower_of_pisa": "https://images.pexels.com/photos/15960848/pexels-photo-15960848.jpeg",
+    "great_wall_of_china": "https://images.pexels.com/photos/19031655/pexels-photo-19031655.jpeg",
+    "theme_park_texture": "https://images.unsplash.com/photo-1547675960-7634cf1b0856"
+  },
+  "accessibility": {
+    "contrast": "Ensure text over images or colored backgrounds passes WCAG AA.",
+    "testing": "All interactive elements (inputs, buttons, counters, totals) MUST have data-testid attributes.",
+    "fonts": "Use appropriate font families for Hindi vs English text blocks to ensure legibility."
+  },
+  "instructions_to_main_agent": [
+    "Configure Tailwind with the exact custom colors provided.",
+    "Import the Google Fonts in index.css.",
+    "Use framer-motion heavily in the Hero section to create the 'Awwwards-level' kinetic reveal of the Hindi text.",
+    "The 7 Wonders images in the Hero should be clipped into shapes (arches, rounded pills) using Tailwind's border-radius or clip-path, and animated to float slowly.",
+    "Implement the dynamic pricing logic correctly in React: `const isWeekend = date.getDay() === 0 || date.getDay() === 6; const price = isWeekend ? 100 : 50;`",
+    "Only use Lucide React for icons. No emojis for UI icons.",
+    "Keep the overall vibe vibrant, professional, and slightly magical."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Do NOT center align the app container (No .App { text-align: center; }).",
+    "Create depth through layered design elements with z-index hierarchy and soft box-shadows.",
+    "Apply specific transitions to interactive elements, never 'transition: all'.",
+    "Add micro-animations to all buttons (hover scale up slightly, active scale down).",
+    "Never use generic AI emojis for icons; always use lucide-react."
+  ]
+}
