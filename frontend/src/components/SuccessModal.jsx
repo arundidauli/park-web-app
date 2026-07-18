@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import QRCode from "react-qr-code";
-import { CheckCircle2, Download, Calendar, User, Phone, Ticket, Loader2 } from "lucide-react";
+import { CheckCircle2, Download, Calendar, User, Phone, Ticket, Loader2, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { downloadTickets } from "../lib/generateTicket";
 
@@ -36,11 +36,17 @@ export default function SuccessModal({ open, onOpenChange, booking }) {
             backgroundSize: "40px 40px"
           }} />
           <div className="relative">
-            <CheckCircle2 className="w-10 h-10 text-brand-yellow" />
+            {booking.status === "Hold" ? (
+              <Clock className="w-10 h-10 text-brand-yellow" />
+            ) : (
+              <CheckCircle2 className="w-10 h-10 text-brand-yellow" />
+            )}
             <div className="mt-3 font-hindi text-3xl font-bold leading-tight">
-              टिकट कन्फर्म!
+              {booking.status === "Hold" ? "होल्ड पर है!" : "टिकट कन्फर्म!"}
             </div>
-            <div className="font-display italic text-white/80">Booking confirmed.</div>
+            <div className="font-display italic text-white/80">
+              {booking.status === "Hold" ? "Booking on hold." : "Booking confirmed."}
+            </div>
           </div>
         </div>
 

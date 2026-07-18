@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Minus, Plus, User, Phone, Mail, Sparkles, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Minus, Plus, User, Phone, Mail, Sparkles, Loader2, Ban } from "lucide-react";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Input } from "./ui/input";
@@ -9,8 +9,8 @@ import { toast } from "sonner";
 import { priceForDate, isWeekend } from "../lib/data";
 import SuccessModal from "./SuccessModal";
 
-const API_URL = process.env.REACT_APP_API_URL;          // local backend
-const SHEETS_URL = process.env.REACT_APP_SHEETS_URL;    // Apps Script (production)
+const API_URL = process.env.REACT_APP_API_URL;
+const SHEETS_URL = process.env.REACT_APP_SHEETS_URL;
 const BYPASS = process.env.REACT_APP_BYPASS_PAYMENT === "true";
 
 const Counter = ({ label, hi, value, onChange, min = 0, testId }) => (
@@ -55,14 +55,48 @@ export default function Booking() {
   const [modalOpen, setModalOpen] = useState(false);
   const [booking, setBooking] = useState(null);
   const [dateOpen, setDateOpen] = useState(false);
+  const [holidays, setHolidays] = useState([]);
+  const [parkOpen, setParkOpen] = useState(true);
+  const [holdBooking, setHoldBooking] = useState(false);
+
+  // Fetch holidays + park config on mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const url = API_URL || (SHEETS_URL ? SHEETS_URL + "?action=settings" : null);
+      if (!url) return;
+      try {
+        const settingsUrl = API_URL
+          ? API_URL + "/api/settings"
+          : SHEETS_URL + "?action=settings";
+        const res = await fetch(settingsUrl);
+        const data = await res.json();
+        if (data.holidays) setHolidays(data.holidays);
+        if (data.config && data.config.park_open === "false") setParkOpen(false);
+      } catch (e) {
+        // Settings not available — default to open
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  // Holiday date strings as a Set for fast lookup
+  const holidaySet = useMemo(() => new Set(holidays.map(h => h.date)), [holidays]);
+
+  // Check if selected date is a holiday
+  const selectedHoliday = useMemo(() => {
+    if (!date) return null;
+    const dateStr = format(date, "yyyy-MM-dd");
+    return holidays.find(h => h.date === dateStr) || null;
+  }, [date, holidays]);
 
   const perPerson = priceForDate(date);
   const total = adults * perPerson;
   const weekend = isWeekend(date);
+  const isDateBlocked = !parkOpen || !!selectedHoliday;
 
   const canPay = useMemo(() => (
-    date && adults >= 1 && name.trim().length >= 2 && /^[6-9]\d{9}$/.test(phone) && /^\S+@\S+\.\S+$/.test(email)
-  ), [date, adults, name, phone, email]);
+    date && adults >= 1 && name.trim().length >= 2 && /^[6-9]\d{9}$/.test(phone) && /^\S+@\S+\.\S+$/.test(email) && !isDateBlocked
+  ), [date, adults, name, phone, email, isDateBlocked]);
 
   const handlePay = async () => {
     if (!canPay) {
@@ -81,6 +115,7 @@ export default function Booking() {
       // Save to local backend if available
       if (API_URL) {
         try {
+          const bookingStatus = holdBooking ? "Hold" : "Confirmed";
           const res = await fetch(API_URL + "/api/bookings", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -95,12 +130,17 @@ export default function Booking() {
               rate: perPerson,
               total,
               dayType: weekend ? "Weekend" : "Weekday",
+              status: bookingStatus,
             }),
           });
           const data = await res.json();
           if (data.success) {
             ticketIds.length = 0;
             ticketIds.push(...data.ticketIds);
+          } else {
+            toast.error(data.detail || "Booking failed");
+            setProcessing(false);
+            return;
           }
         } catch (e) {
           // Backend not running — use client-side ticket IDs
@@ -120,9 +160,10 @@ export default function Booking() {
         total,
         dayType: weekend ? "Weekend" : "Weekday",
         paymentId: "DEMO-" + bookingId,
+        status: holdBooking ? "Hold" : "Confirmed",
       });
       setModalOpen(true);
-      toast.success("Booking confirmed! (Demo mode — no payment)");
+      toast.success(holdBooking ? "Booking on hold! (Demo mode)" : "Booking confirmed! (Demo mode — no payment)");
       setDate(null);
       setAdults(2);
       setKidsUnder3(0);
@@ -210,6 +251,7 @@ export default function Booking() {
                 total,
                 dayType: weekend ? "Weekend" : "Weekday",
                 paymentId: response.razorpay_payment_id,
+                status: holdBooking ? "Hold" : "Confirmed",
               });
               setModalOpen(true);
               toast.success("Payment successful! टिकट कन्फर्म।");
@@ -292,7 +334,10 @@ export default function Booking() {
                       mode="single"
                       selected={date}
                       onSelect={(d) => { setDate(d); setDateOpen(false); }}
-                      disabled={{ before: new Date() }}
+                      disabled={(d) => {
+                        const ds = format(d, "yyyy-MM-dd");
+                        return d < new Date() || holidaySet.has(ds) || !parkOpen;
+                      }}
                       initialFocus
                     />
                   </PopoverContent>
@@ -307,6 +352,16 @@ export default function Booking() {
                     <Sparkles className="w-3 h-3" />
                     {weekend ? "Weekend rate applies — ₹100 per person" : "Weekday rate — ₹50 per person"}
                   </motion.div>
+                )}
+                {!parkOpen && (
+                  <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold rounded-full px-3 py-1 bg-red-50 text-red-600 border border-red-200">
+                    <Ban className="w-3 h-3" /> Park is currently closed
+                  </div>
+                )}
+                {selectedHoliday && (
+                  <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold rounded-full px-3 py-1 bg-red-50 text-red-600 border border-red-200">
+                    <Ban className="w-3 h-3" /> {selectedHoliday.reason}
+                  </div>
                 )}
               </li>
 
@@ -378,6 +433,21 @@ export default function Booking() {
                 </div>
               </li>
             </ol>
+
+            {/* Hold toggle */}
+            <div className="mt-6 flex items-center gap-3 p-4 rounded-2xl border border-brand-indigo/10 bg-white">
+              <button
+                onClick={() => setHoldBooking(!holdBooking)}
+                className={`relative w-11 h-6 rounded-full transition-colors ${holdBooking ? "bg-brand-orange" : "bg-brand-indigo/20"}`}
+                data-testid="hold-toggle"
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${holdBooking ? "translate-x-5" : ""}`} />
+              </button>
+              <div>
+                <div className="font-display font-semibold text-brand-indigo text-sm">Put on Hold</div>
+                <div className="font-hindi text-xs text-brand-ink/60">पक्का करने से पहले होल्ड पर रखें</div>
+              </div>
+            </div>
           </div>
 
           {/* Live Summary */}
@@ -443,11 +513,11 @@ export default function Booking() {
 
                 <button
                   onClick={handlePay}
-                  disabled={processing}
+                  disabled={processing || isDateBlocked}
                   className="mt-8 w-full inline-flex items-center justify-center gap-2 rounded-full bg-brand-yellow text-brand-indigo px-6 py-4 font-display font-bold text-base hover:bg-white transition-colors disabled:opacity-70"
                   data-testid="proceed-pay"
                 >
-                  {processing ? (<><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>) : "Pay ₹" + total}
+                  {processing ? (<><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>) : holdBooking ? "Hold ₹" + total : "Pay ₹" + total}
                 </button>
                 <p className="mt-3 text-center text-[11px] text-white/50 font-hindi">
                   भुगतान करके आप हमारी शर्तों से सहमत होते हैं।

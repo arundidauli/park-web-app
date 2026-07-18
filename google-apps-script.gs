@@ -12,13 +12,17 @@
 // ============================================================
 
 const RAZORPAY_API = "https://api.razorpay.com/v1";
+const SETTINGS_SHEET = "settings";
 
 function doGet(e) {
   const action = e.parameter.action;
 
-  // Flutter scanner: validate ticket
   if (action === "validate") {
     return handleValidate(e.parameter.ticketId, e.parameter.date);
+  }
+
+  if (action === "settings") {
+    return handleGetSettings();
   }
 
   return jsonResponse({ status: "ok", message: "7 Ajoobe Park Booking API" });
@@ -43,12 +47,75 @@ function doPost(e) {
   }
 }
 
+// ─── Settings / Holidays ────────────────────────────────────
+function handleGetSettings() {
+  const settings = readSettings();
+  return jsonResponse(settings);
+}
+
+function readSettings() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let ws = ss.getSheetByName(SETTINGS_SHEET);
+
+  if (!ws) {
+    return { holidays: [], config: { park_open: "true", booking_hold_enabled: "true" } };
+  }
+
+  const data = ws.getDataRange().getValues();
+  var holidays = [];
+  var config = {};
+
+  for (var i = 1; i < data.length; i++) {
+    var key = String(data[i][0] || "").trim();
+    var value = String(data[i][1] || "").trim();
+
+    if (!key) continue;
+    if (key.charAt(0) === "#") continue;
+
+    if (key.indexOf("holiday:") === 0) {
+      var dateStr = key.substring(8).trim();
+      var reason = (value && value !== "true") ? value : "Holiday";
+      holidays.push({ date: dateStr, reason: reason });
+    } else {
+      config[key] = value;
+    }
+  }
+
+  return { holidays: holidays, config: config };
+}
+
+function isHoliday(dateStr) {
+  var settings = readSettings();
+
+  // Check park_open
+  if (settings.config.park_open === "false") {
+    return { closed: true, reason: "Park is currently closed" };
+  }
+
+  // Check holidays
+  for (var i = 0; i < settings.holidays.length; i++) {
+    if (settings.holidays[i].date === dateStr) {
+      return { closed: true, reason: settings.holidays[i].reason };
+    }
+  }
+
+  return { closed: false };
+}
+
 // ─── Create Razorpay Order ──────────────────────────────────
 function handleCreateOrder(data) {
-  const { amount, bookingId, receipt } = data;
+  const { amount, bookingId, receipt, date } = data;
 
   if (!amount || amount <= 0) {
     return jsonResponse({ success: false, error: "Invalid amount" });
+  }
+
+  // Check holiday before creating order
+  if (date) {
+    var holidayCheck = isHoliday(date);
+    if (holidayCheck.closed) {
+      return jsonResponse({ success: false, error: "Park closed on " + date + " — " + holidayCheck.reason });
+    }
   }
 
   const props = PropertiesService.getScriptProperties();
@@ -156,7 +223,6 @@ function handleValidate(ticketId, date) {
     return jsonResponse({ success: false, error: "No ticket ID provided" });
   }
 
-  // If date provided, search that sheet only; otherwise search all
   var sheets;
   if (date) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -182,6 +248,14 @@ function handleValidate(ticketId, date) {
           return jsonResponse({
             valid: false,
             reason: "Ticket already used",
+            ticketId: ticketId,
+          });
+        }
+
+        if (status === "Hold") {
+          return jsonResponse({
+            valid: false,
+            reason: "Booking on hold — not confirmed yet",
             ticketId: ticketId,
           });
         }
@@ -273,7 +347,6 @@ function sendConfirmationEmail(booking, ticketIds, paymentId) {
 
 // ─── Helpers ─────────────────────────────────────────────────
 function getOrCreateSheet(visitDate) {
-  // Worksheet name = visit date (YYYY-MM-DD)
   var sheetName = visitDate || Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd");
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
