@@ -10,7 +10,7 @@ const BRAND = {
   white: [255, 255, 255],
 };
 
-function addTicketPage(doc, ticket, pageIndex, totalPages) {
+async function addTicketPage(doc, ticket, pageIndex, totalPages) {
   // Background
   doc.setFillColor(...BRAND.indigo);
   doc.roundedRect(0, 0, 90, 55, 0, 0, "F");
@@ -64,7 +64,7 @@ function addTicketPage(doc, ticket, pageIndex, totalPages) {
   doc.text(ticket.isKid ? "Kid under 3 (FREE)" : "Adult", 7, 53.5);
 
   // QR code
-  const qrDataUrl = QRCode.toDataURL(ticket.id, {
+  const qrDataUrl = await QRCode.toDataURL(ticket.id, {
     width: 200,
     margin: 1,
     color: { dark: "#1E1B4B", light: "#FFFFFF" },
@@ -175,7 +175,7 @@ export async function downloadTickets(booking) {
     const ticketId = booking.bookingId + "-" + String(i).padStart(2, "0");
     const isKid = i > booking.adults;
 
-    addTicketPage(doc, {
+    await addTicketPage(doc, {
       id: ticketId,
       name: booking.name,
       date: booking.date,
