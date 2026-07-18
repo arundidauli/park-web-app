@@ -1,89 +1,174 @@
-from fastapi import FastAPI, APIRouter
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
-import logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import gspread
+from google.oauth2.service_account import Credentials
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+
+# ── Config ───────────────────────────────────────────────────
+SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1Hbhv3HfWHfuzru-6aSDjO3qghfo8h6Jr62Zs_cMoldc")
+SERVICE_ACCOUNT_FILE = Path(__file__).parent / "service-account.json"
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+]
+
+creds = Credentials.from_service_account_file(str(SERVICE_ACCOUNT_FILE), scopes=SCOPES)
+gc = gspread.authorize(creds)
+
+# ── Open spreadsheet ─────────────────────────────────────────
+if not SPREADSHEET_ID:
+    print("\n⚠️  Set SPREADSHEET_ID in your environment:")
+    print("   export SPREADSHEET_ID=your_sheet_id_here")
+    print("\n   Trying to open first accessible spreadsheet...\n")
+    try:
+        spreadsheet = gc.open("7 Ajoobe Park Bookings")
+    except gspread.SpreadsheetNotFound:
+        sheets = gc.openall()
+        if sheets:
+            spreadsheet = sheets[0]
+            print(f"Found existing sheet: {spreadsheet.title} ({spreadsheet.url})")
+        else:
+            print("ERROR: No spreadsheets found. Create one and share with:")
+            print(f"  {creds.service_account_email}")
+            exit(1)
+else:
+    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+
+print(f"Using spreadsheet: {spreadsheet.url}")
+
+# ── Headers ──────────────────────────────────────────────────
+HEADERS = [
+    "Ticket IDs", "Booking Timestamp", "Visit Date", "Name", "Phone",
+    "Email", "Adults", "Kids Under 3", "Rate", "Total Amount",
+    "Day Type", "Status", "Payment ID",
+]
 
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+def get_sheet_for_date(visit_date: str):
+    """Get or create a daily worksheet named by visit date (e.g. '2026-07-25')."""
+    sheet_name = visit_date  # already YYYY-MM-DD format
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+    try:
+        return spreadsheet.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        ws = spreadsheet.add_worksheet(title=sheet_name, rows=500, cols=13)
+        ws.update("A1", [HEADERS])
+        ws.format("A1:M1", {
+            "backgroundColor": {"red": 0.118, "green": 0.106, "blue": 0.294},
+            "textFormat": {
+                "foregroundColor": {"red": 0.98, "green": 0.8, "blue": 0.08},
+                "bold": True, "fontSize": 11,
+            },
+            "horizontalAlignment": "CENTER",
+        })
+        ws.freeze(rows=1)
+        print(f"Created worksheet '{sheet_name}'")
+        return ws
 
-# Create the main app without a prefix
+
+# ── FastAPI ──────────────────────────────────────────────────
 app = FastAPI()
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
-
-
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
-app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+class BookingRequest(BaseModel):
+    bookingId: str
+    date: str
+    name: str
+    phone: str
+    email: str
+    adults: int
+    kidsUnder3: int
+    rate: int
+    total: int
+    dayType: str
+
+
+@app.get("/")
+def root():
+    return {"status": "ok", "spreadsheet": spreadsheet.url}
+
+
+@app.post("/api/bookings")
+def create_booking(b: BookingRequest):
+    total_tickets = b.adults + b.kidsUnder3
+    ticket_ids = [f"{b.bookingId}-{str(i+1).zfill(2)}" for i in range(total_tickets)]
+
+    ws = get_sheet_for_date(b.date)
+
+    row = [
+        ", ".join(ticket_ids),
+        datetime.utcnow().isoformat(),
+        b.date,
+        b.name,
+        b.phone,
+        b.email,
+        b.adults,
+        b.kidsUnder3,
+        b.rate,
+        b.total,
+        b.dayType,
+        "Confirmed",
+        "DEMO-" + b.bookingId,
+    ]
+
+    ws.append_row(row, value_input_option="USER_ENTERED")
+
+    print(f"✅ Booking saved: {b.name} | {b.bookingId} | {total_tickets} tickets | ₹{b.total} → {b.date}")
+
+    return {
+        "success": True,
+        "ticketIds": ticket_ids,
+        "spreadsheet": spreadsheet.url,
+    }
+
+
+@app.get("/api/validate")
+def validate_ticket(ticketId: str, date: str = ""):
+    if date:
+        # Only search existing sheets — never create during validation
+        try:
+            ws_list = [spreadsheet.worksheet(date)]
+        except gspread.WorksheetNotFound:
+            return {"valid": False, "reason": "Ticket not found", "ticketId": ticketId}
+    else:
+        ws_list = spreadsheet.worksheets()
+
+    for ws in ws_list:
+        data = ws.get_all_values()
+        for i, row in enumerate(data[1:], start=2):
+            ticket_ids_cell = row[0] if row else ""
+            if ticketId in ticket_ids_cell:
+                status = row[11] if len(row) > 11 else ""
+                if status == "Used":
+                    return {"valid": False, "reason": "Ticket already used", "ticketId": ticketId}
+                if status != "Confirmed":
+                    return {"valid": False, "reason": "Ticket not confirmed", "ticketId": ticketId}
+                ws.update_cell(i, 12, "Used")
+                return {
+                    "valid": True,
+                    "ticketId": ticketId,
+                    "name": row[3],
+                    "date": row[2],
+                    "message": "Entry granted",
+                }
+
+    return {"valid": False, "reason": "Ticket not found", "ticketId": ticketId}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    print(f"\n🚀 Server running at http://localhost:8000")
+    print(f"   Service account: {creds.service_account_email}\n")
+    uvicorn.run(app, host="0.0.0.0", port=8000)

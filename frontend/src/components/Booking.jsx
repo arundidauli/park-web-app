@@ -9,6 +9,10 @@ import { toast } from "sonner";
 import { priceForDate, isWeekend } from "../lib/data";
 import SuccessModal from "./SuccessModal";
 
+const API_URL = process.env.REACT_APP_API_URL;          // local backend
+const SHEETS_URL = process.env.REACT_APP_SHEETS_URL;    // Apps Script (production)
+const BYPASS = process.env.REACT_APP_BYPASS_PAYMENT === "true";
+
 const Counter = ({ label, hi, value, onChange, min = 0, testId }) => (
   <div className="flex items-center justify-between rounded-2xl border border-brand-indigo/10 bg-white p-4">
     <div>
@@ -60,24 +64,189 @@ export default function Booking() {
     date && adults >= 1 && name.trim().length >= 2 && /^[6-9]\d{9}$/.test(phone) && /^\S+@\S+\.\S+$/.test(email)
   ), [date, adults, name, phone, email]);
 
-  const handlePay = () => {
+  const handlePay = async () => {
     if (!canPay) {
       toast.error("कृपया पूरा फ़ॉर्म सही से भरें / Please complete the form.");
       return;
     }
+
     setProcessing(true);
-    setTimeout(() => {
-      const id = "AJ-" + Math.random().toString(36).slice(2, 8).toUpperCase();
-      setBooking({ id, date, adults, kidsUnder3, name, phone, email, total });
-      setProcessing(false);
+    const bookingId = "AJ-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+    const totalTickets = adults + kidsUnder3;
+    const ticketIds = Array.from({ length: totalTickets }, (_, i) =>
+      bookingId + "-" + String(i + 1).padStart(2, "0")
+    );
+    // ── Bypass / Demo mode: skip Razorpay ──
+    if (BYPASS || !SHEETS_URL) {
+      // Save to local backend if available
+      if (API_URL) {
+        try {
+          const res = await fetch(API_URL + "/api/bookings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              bookingId,
+              date: format(date, "yyyy-MM-dd"),
+              name: name.trim(),
+              phone,
+              email: email.trim(),
+              adults,
+              kidsUnder3,
+              rate: perPerson,
+              total,
+              dayType: weekend ? "Weekend" : "Weekday",
+            }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            ticketIds.length = 0;
+            ticketIds.push(...data.ticketIds);
+          }
+        } catch (e) {
+          // Backend not running — use client-side ticket IDs
+        }
+      }
+
+      setBooking({
+        bookingId,
+        ticketIds,
+        date: format(date, "yyyy-MM-dd"),
+        name: name.trim(),
+        phone,
+        email: email.trim(),
+        adults,
+        kidsUnder3,
+        rate: perPerson,
+        total,
+        dayType: weekend ? "Weekend" : "Weekday",
+        paymentId: "DEMO-" + bookingId,
+      });
       setModalOpen(true);
-      toast.success("Payment successful! टिकट कन्फर्म।");
-    }, 1200);
+      toast.success("Booking confirmed! (Demo mode — no payment)");
+      setDate(null);
+      setAdults(2);
+      setKidsUnder3(0);
+      setName("");
+      setPhone("");
+      setEmail("");
+      setProcessing(false);
+      return;
+    }
+
+    // ── Real Razorpay flow ──
+    try {
+      // Step 1: Create Razorpay order via Apps Script
+      const orderRes = await fetch(SHEETS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create-order",
+          amount: total,
+          bookingId,
+        }),
+      });
+      const orderData = await orderRes.json();
+
+      if (!orderData.success) {
+        toast.error(orderData.error || "Failed to create order");
+        setProcessing(false);
+        return;
+      }
+
+      // Step 2: Open Razorpay checkout
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "7 Ajoobe Park",
+        description: "Ticket Booking — " + bookingId,
+        order_id: orderData.orderId,
+        prefill: {
+          name,
+          email,
+          contact: phone,
+        },
+        theme: {
+          color: "#1E1B4B",
+        },
+        handler: async function (response) {
+          // Step 3: Verify payment via Apps Script
+          try {
+            const verifyRes = await fetch(SHEETS_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "verify-payment",
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                booking: {
+                  bookingId,
+                  date: format(date, "yyyy-MM-dd"),
+                  name: name.trim(),
+                  phone,
+                  email: email.trim(),
+                  adults,
+                  kidsUnder3,
+                  rate: perPerson,
+                  total,
+                  dayType: weekend ? "Weekend" : "Weekday",
+                },
+              }),
+            });
+            const verifyData = await verifyRes.json();
+
+            if (verifyData.success) {
+              setBooking({
+                bookingId,
+                ticketIds: verifyData.ticketIds,
+                date: format(date, "yyyy-MM-dd"),
+                name: name.trim(),
+                phone,
+                email: email.trim(),
+                adults,
+                kidsUnder3,
+                rate: perPerson,
+                total,
+                dayType: weekend ? "Weekend" : "Weekday",
+                paymentId: response.razorpay_payment_id,
+              });
+              setModalOpen(true);
+              toast.success("Payment successful! टिकट कन्फर्म।");
+
+              // Reset form
+              setDate(null);
+              setAdults(2);
+              setKidsUnder3(0);
+              setName("");
+              setPhone("");
+              setEmail("");
+            } else {
+              toast.error(verifyData.error || "Payment verification failed. Contact support.");
+            }
+          } catch (err) {
+            toast.error("Payment received but confirmation pending. Contact support with ID: " + response.razorpay_payment_id);
+          }
+          setProcessing(false);
+        },
+        modal: {
+          ondismiss: function () {
+            setProcessing(false);
+            toast.error("Payment cancelled.");
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      toast.error("Something went wrong. Please try again.");
+      setProcessing(false);
+    }
   };
 
   return (
     <section id="book" className="relative py-24 md:py-36 bg-white overflow-hidden" data-testid="booking-section">
-      {/* decorative */}
       <div className="pointer-events-none absolute -top-32 right-0 w-[400px] h-[400px] rounded-full bg-brand-yellow/30 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 -left-40 w-[500px] h-[500px] rounded-full bg-brand-teal/10 blur-3xl" />
 
@@ -101,7 +270,6 @@ export default function Booking() {
           {/* Form */}
           <div className="lg:col-span-3 rounded-[2rem] bg-brand-cream/70 p-6 md:p-10 border border-brand-indigo/10">
             <ol className="space-y-8">
-              {/* Step 1 date */}
               <li>
                 <div className="flex items-center gap-3 mb-3">
                   <span className="font-mono text-xs text-brand-orange">01</span>
@@ -142,7 +310,6 @@ export default function Booking() {
                 )}
               </li>
 
-              {/* Step 2 visitors */}
               <li>
                 <div className="flex items-center gap-3 mb-3">
                   <span className="font-mono text-xs text-brand-orange">02</span>
@@ -168,7 +335,6 @@ export default function Booking() {
                 </div>
               </li>
 
-              {/* Step 3 details */}
               <li>
                 <div className="flex items-center gap-3 mb-3">
                   <span className="font-mono text-xs text-brand-orange">03</span>
@@ -281,7 +447,7 @@ export default function Booking() {
                   className="mt-8 w-full inline-flex items-center justify-center gap-2 rounded-full bg-brand-yellow text-brand-indigo px-6 py-4 font-display font-bold text-base hover:bg-white transition-colors disabled:opacity-70"
                   data-testid="proceed-pay"
                 >
-                  {processing ? (<><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>) : "Proceed to Pay"}
+                  {processing ? (<><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>) : "Pay ₹" + total}
                 </button>
                 <p className="mt-3 text-center text-[11px] text-white/50 font-hindi">
                   भुगतान करके आप हमारी शर्तों से सहमत होते हैं।

@@ -72,7 +72,7 @@ export default function Hero() {
           Moradabad Development Authority × Zing Parks
         </motion.div>
 
-        <h1 className="mt-6 font-hindi font-bold text-brand-indigo leading-[1.05] tracking-tight text-[32px] sm:text-[44px] md:text-[56px] lg:text-[72px] max-w-4xl" data-testid="hero-headline">
+        <h1 className="mt-6 font-hindi font-bold text-brand-indigo leading-[1.3] tracking-tight text-[32px] sm:text-[44px] md:text-[56px] lg:text-[72px] max-w-4xl" data-testid="hero-headline">
           <HeroLine delay={0.1}>दुनिया के प्रसिद्ध</HeroLine>
           <HeroLine delay={0.25} className="text-brand-orange italic">अजूबे</HeroLine>
           <HeroLine delay={0.4}>

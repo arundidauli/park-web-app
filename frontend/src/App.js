@@ -1,5 +1,4 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "sonner";
 import SmoothScroll from "@/components/SmoothScroll";
 import Header from "@/components/Header";
@@ -12,46 +11,36 @@ import Pricing from "@/components/Pricing";
 import Terms from "@/components/Terms";
 import Footer from "@/components/Footer";
 
-function Home() {
-  return (
-    <SmoothScroll>
-      <div className="grain relative" data-testid="home-root">
-        <Header />
-        <main>
-          <Hero />
-          <Marquee />
-          <Manifesto />
-          <Wonders />
-          <Booking />
-          <Pricing />
-          <Terms />
-          <Footer />
-        </main>
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            style: {
-              background: "#1E1B4B",
-              color: "#FACC15",
-              border: "1px solid rgba(250, 204, 21, 0.2)",
-              borderRadius: "999px",
-              fontFamily: "'DM Sans', sans-serif",
-            },
-          }}
-        />
-      </div>
-    </SmoothScroll>
-  );
-}
-
 function App() {
   return (
     <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />} />
-        </Routes>
-      </BrowserRouter>
+      <SmoothScroll>
+        <div className="grain relative" data-testid="home-root">
+          <Header />
+          <main>
+            <Hero />
+            <Marquee />
+            <Manifesto />
+            <Wonders />
+            <Booking />
+            <Pricing />
+            <Terms />
+            <Footer />
+          </main>
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              style: {
+                background: "#1E1B4B",
+                color: "#FACC15",
+                border: "1px solid rgba(250, 204, 21, 0.2)",
+                borderRadius: "999px",
+                fontFamily: "'DM Sans', sans-serif",
+              },
+            }}
+          />
+        </div>
+      </SmoothScroll>
     </div>
   );
 }
